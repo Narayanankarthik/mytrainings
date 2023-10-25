@@ -1,0 +1,408 @@
+Anil------------9703388097
+
+https://drive.google.com/drive/folders/1SBD6bF1QNbxx9b2t1B6_tjVZ67z7YMSw?usp=drive_link
+
+
+password for virtual box image: redhat
+
+Confluent folder/ bin -> right lick open in terminal
+
+./confluent start
+
+
+./confluent status
+
+
+./kafka-topics --create --topic test-avro-topic --partitions 4 --replication-factor 1 --zookeeper localhost:2181
+
+Create project and convertto maven
+<repositories>
+  <repository>
+  <id>redhatavro</id>
+  <url>https://maven.repository.redhat.com/earlyaccess/all/</url>
+  </repository>
+  </repositories>
+  <dependencies>
+  <!-- https://mvnrepository.com/artifact/io.confluent/kafka-avro-serializer -->
+<dependency>
+    <groupId>io.confluent</groupId>
+    <artifactId>kafka-avro-serializer</artifactId>
+    <version>5.3.0</version>
+</dependency>
+  </dependencies>
+
+
+
+
+Create file under project->
+employee.avsc
+
+{
+"namespace":"com.boa.training.empschema",
+"type":"record",
+"name":"employee",
+"fields":[
+    {"name":"empId","type":"int"},
+    {"name":"name","type":"string"},
+    {"name":"designation","type":"string"}
+]
+}
+
+package name: com.boa.training.avrosender
+
+
+
+package com.boa.training.avrosender;
+
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.util.Properties;
+
+import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.GenericRecord;
+import org.apache.kafka.clients.producer.KafkaProducer;
+import org.apache.kafka.clients.producer.ProducerConfig;
+import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.common.serialization.StringSerializer;
+
+import io.confluent.kafka.serializers.KafkaAvroSerializer;
+
+public class AvroSenderTest {
+    public static void main(String[] args) {
+        Properties props=new Properties();
+        props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
+        props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
+        props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, KafkaAvroSerializer.class.getName());
+        props.put("schema.registry.url", "http://localhost:8081");
+        KafkaProducer<String, GenericRecord> producer=new KafkaProducer<>(props);
+        byte[] array=new byte[1024];
+        FileInputStream fin=null;
+        try {
+             fin=new FileInputStream("employee.avsc");
+            fin.read(array);
+            fin.close();
+        } catch (FileNotFoundException e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+        } catch (IOException e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+        }
+        Schema.Parser parser=new Schema.Parser();
+        Schema schema=parser.parse(new String(array));
+        GenericRecord genRecord=new GenericData.Record(schema);
+        genRecord.put("empId", 10023);
+        genRecord.put("name", "Surya");
+        genRecord.put("designation", "Accountant");
+        
+        ProducerRecord<String, GenericRecord> producerRecord=
+                new ProducerRecord<>("test-avro-topic", "rec-1", genRecord);
+        
+        producer.send(producerRecord);
+        producer.close();
+        System.out.println("message sent");
+        
+    }
+}
+
+
+./kafka-console-consumer --topic test-avro-topic --bootstrap-server localhost:9092 --from-beginning
+
+
+./kafka-avro-console-consumer --topic test-avro-topic --bootstrap-server localhost:9092 --from-beginning
+
+
+./kafka-avro-console-consumer --topic test-avro-topic --bootstrap-server localhost:9092 --from-beginning --property print.schema.ids=true --property schema.id.separator=:
+
+
+curl -X GET http://localhost:8081/schemas/ids/21
+
+[kafka@localhost bin]$ curl -X GET http://localhost:8081/subjects
+["test-avro-topic-value"][kafka@localhost bin]$ 
+
+/subjects/test-avro-topic-value/versions
+[1][kafka@localhost bin]$ curl -X GET http://localhost:8081/subjects/test-avro-topic-value/versions/1
+
+
+https://dzone.com/articles/kafka-avro-serialization-and-the-schema-registry
+
+ 
+
+
+curl -X GET http://localhost:8082/topics/test-avro-topic
+
+curl -X GET http://localhost:8082/topics/test-avro-topic/partitions
+
+curl -X  GET http://localhost:8082/topics/test-avro-topic/partitions/1
+
+
+
+curl -X GET http://localhost:8082/topics/
+
+./kafka-topics --create --topic test-rest-topic --partitions 3 --replication-factor 1 --zookeeper localhost:2181
+
+
+curl -X POST -H "Content-Type: application/vnd.kafka.json.v2+json" --data '{"records":[{"value":{"id":1001,"name":"Arvind","designation":"Developer"}}]}' http://localhost:8082/topics/test-rest-topic
+
+
+CRUD
+Create -POST
+Retrieve- GET
+Update-PUT
+delete-DELETE
+
+
+./kafka-console-consumer --topic test-rest-topic --bootstrap-server localhost:9092 --from-beginning
+
+
+https://docs.confluent.io/platform/current/kafka-rest/quickstart.html
+
+
+
+
+
+
+%KAFKA_HOME%\config\my-connect-file-source.properties
+
+name=local-file-source
+connector.class=FileStreamSource
+tasks.max=1
+file=c:/test/first.txt
+topic=test-connector-topic
+
+connect-standalone c:\kafka_2.12-2.5.0\config\connect-standalone.properties c:\kafka_2.12-2.5.0\config\my-connect-file-source.properties
+
+
+kafka-console-consumer --topic test-connector-topic --bootstrap-server localhost:9092 --from-beginning
+
+
+%KAFKA_HOME%\config\my-connect-file-sink.properties
+
+name=local-file-sink
+connector.class=FileStreamSink
+tasks.max=1
+file=c:/test/first-out.txt
+topics=test-connector-topic
+--with schema
+key.converter.schemas.enable=true
+value.converter.schemas.enable=true 
+--wihtout schema
+key.converter.schemas.enable=false
+value.converter.schemas.enable=false
+
+connect-standalone c:\kafka_2.12-2.5.0\config\connect-standalone.properties c:\kafka_2.12-2.5.0\config\my-connect-file-source.properties c:\kafka_2.12-2.5.0\config\my-connect-file-sink.properties
+
+
+zookeeper-server-start c:\kafka_2.12-2.5.0\config\zookeeper.properties
+
+problem statement
+
+mysql-table
+
+id  name    designation
+12444   Rajiv   Developer
+43551   Surya   Accountant
+
+The etl pipeline will pickup the data from mysql-table , publish it to the topic mysql-topic-employee 
+and the streaming app will transform the data.
+
+The transformation will add a new column called salary and calculate the salary based on the designation.
+
+After the transformation, it is published to the topic cassandra-topic-employee.
+
+The cassandra sink connector will pick up the data from the topic cassandra-topic-employee and load it
+to the cassandra table.
+
+cassandra-table
+
+emp_id  name    designation salary 
+12444   Rajiv   Developer   30000   
+43551   Surya   Accountant  25000
+
+mysql password: rps@12345
+
+mysql> create database trainingdb;
+Query OK, 1 row affected (0.00 sec)
+
+mysql> use trainingdb;
+Database changed
+mysql> create table employee(id integer auto_increment,name varchar(20),designation varchar(20),primary key(id));
+
+mysql> insert into employee values(1001,"Arvind","Accountant");
+Query OK, 1 row affected (0.00 sec)
+
+mysql> insert into employee(name,designation) values("Surya","Developer");
+Query OK, 1 row affected (0.00 sec)
+
+mysql> insert into employee(name,designation) values("Amar","Architect");
+
+mysql> select * from employee;
+
+https://www.confluent.io/hub/confluentinc/kafka-connect-jdbc
+Download
+confluentinc-kafka-connect-jdbc-10.7.4.zip
+
+https://d1i4a15mxbxib1.cloudfront.net/api/plugins/confluentinc/kafka-connect-jdbc/versions/10.7.4/confluentinc-kafka-connect-jdbc-10.7.4.zip
+
+src-mysql-connector.properties
+
+
+name=mysql-source-connector
+connector.class=io.confluent.connect.jdbc.JdbcSourceConnector
+tasks.max=10
+
+connection.url=jdbc:mysql://localhost:3306/trainingdb?user=root&password=rps@12345
+table.whitelist=employee
+
+mode=incrementing
+incrementing.column.name=id
+#topic name is mysql-topic-employee
+topic.prefix=mysql-topic-
+
+connect-standalone c:\kafka_2.12-2.5.0\config\connect-standalone.properties c:\kafka_2.12-2.5.0\config\src-mysql-connector.properties
+
+kafka-console-consumer --topic mysql-topic-employee --bootstrap-server localhost:9092 --from-beginning
+
+
+<dependencies>
+  <!-- https://mvnrepository.com/artifact/org.apache.kafka/kafka-streams -->
+<dependency>
+    <groupId>org.apache.kafka</groupId>
+    <artifactId>kafka-streams</artifactId>
+    <version>2.5.0</version>
+</dependency>
+  
+  </dependencies>
+  
+  package com.boa.training.streams;
+
+import java.util.Properties;
+
+import org.apache.kafka.common.serialization.Serdes.StringSerde;
+import org.apache.kafka.streams.KafkaStreams;
+import org.apache.kafka.streams.StreamsBuilder;
+import org.apache.kafka.streams.StreamsConfig;
+import org.apache.kafka.streams.Topology;
+import org.apache.kafka.streams.kstream.KStream;
+
+public class TestStreamingApp {
+
+    public static void main(String[] args) {
+        // TODO Auto-generated method stub
+        Properties props=new Properties();
+        props.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
+        props.put(StreamsConfig.DEFAULT_KEY_SERDE_CLASS_CONFIG, StringSerde.class.getName());
+        props.put(StreamsConfig.DEFAULT_VALUE_SERDE_CLASS_CONFIG, StringSerde.class.getName());
+        props.put(StreamsConfig.APPLICATION_ID_CONFIG,"test-streaming-app");
+        
+        KafkaStreams streams=new KafkaStreams(createTopology(), props);
+        streams.start();
+        System.out.println("streaming started");
+        try {
+            Thread.sleep(10*60*1000);
+        } catch (InterruptedException e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+        }
+        System.out.println("streaming stopped");
+    }
+    
+    static Topology createTopology()
+    {
+        StreamsBuilder builder=new StreamsBuilder();
+        KStream<String, String> inputStream= builder.stream("test-src-topic");
+        KStream<String, String> transformedStream=inputStream.mapValues(v->{
+            System.out.println("processing "+v);
+            return v.toUpperCase();
+        });
+        transformedStream.to("test-target-topic");
+        return builder.build();
+    }
+
+}
+
+kafka-topics --create --topic test-src-topic --partitions 3 --replication-factor 1 --zookeeper localhost:2181
+
+kafka-topics --create --topic test-target-topic --partitions 3 --replication-factor 1 --zookeeper localhost:2181
+
+
+kafka-console-producer --topic test-src-topic --bootstrap-server localhost:9092
+
+
+kafka-console-consumer  --topic test-target-topic --bootstrap-server localhost:9092
+
+
+
+package com.boa.training.domain;
+
+public class Employee {
+    private int id;
+    private String name;
+    private String designation;
+    private double salary;
+    public int getId() {
+        return id;
+    }
+    public void setId(int id) {
+        this.id = id;
+    }
+    public String getName() {
+        return name;
+    }
+    public void setName(String name) {
+        this.name = name;
+    }
+    public String getDesignation() {
+        return designation;
+    }
+    public void setDesignation(String designation) {
+        this.designation = designation;
+    }
+    public double getSalary() {
+        return salary;
+    }
+    public void setSalary(double salary) {
+        this.salary = salary;
+    }
+    public Employee(int id, String name, String designation, double salary) {
+        super();
+        this.id = id;
+        this.name = name;
+        this.designation = designation;
+        this.salary = salary;
+    }
+    public Employee() {
+        super();
+        // TODO Auto-generated constructor stub
+    }
+    
+    
+
+}
+
+
+package com.boa.training.serde;
+
+import org.apache.kafka.common.serialization.Deserializer;
+import org.apache.kafka.common.serialization.Serde;
+import org.apache.kafka.common.serialization.Serializer;
+
+import com.boa.training.domain.Employee;
+
+public class EmployeeSerde implements Serde<Employee>{
+
+    @Override
+    public Deserializer<Employee> deserializer() {
+        // TODO Auto-generated method stub
+        return new EmployeeDeserializer();
+    }
+
+    @Override
+    public Serializer<Employee> serializer() {
+        // TODO Auto-generated method stub
+        return new EmployeeSerializer();
+    }
+
+}

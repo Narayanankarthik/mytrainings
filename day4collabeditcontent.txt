@@ -1,0 +1,700 @@
+https://drive.google.com/drive/folders/1SBD6bF1QNbxx9b2t1B6_tjVZ67z7YMSw?usp=drive_link
+
+
+Anil------------9703388097
+
+package com.boa.training.streams;
+
+import java.util.Properties;
+
+import org.apache.kafka.common.serialization.Serdes.StringSerde;
+import org.apache.kafka.streams.KafkaStreams;
+import org.apache.kafka.streams.StreamsBuilder;
+import org.apache.kafka.streams.StreamsConfig;
+import org.apache.kafka.streams.Topology;
+import org.apache.kafka.streams.kstream.KStream;
+
+import com.boa.training.domain.Employee;
+import com.boa.training.serde.EmployeeSerde;
+
+public class MySqlToCassandraETLStreamingApp {
+    
+    public static void main(String[] args) {
+        // TODO Auto-generated method stub
+        Properties props=new Properties();
+        props.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
+        props.put(StreamsConfig.DEFAULT_KEY_SERDE_CLASS_CONFIG, StringSerde.class.getName());
+        props.put(StreamsConfig.DEFAULT_VALUE_SERDE_CLASS_CONFIG, EmployeeSerde.class.getName());
+        props.put(StreamsConfig.APPLICATION_ID_CONFIG,"mysql-cassandra-etl-app");
+        
+        KafkaStreams streams=new KafkaStreams(createTopology(), props);
+        streams.start();
+        System.out.println("streaming started");
+        try {
+            Thread.sleep(10*60*1000);
+        } catch (InterruptedException e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+        }
+        System.out.println("streaming stopped");
+    }
+    
+    static Topology createTopology()
+    {
+        StreamsBuilder builder=new StreamsBuilder();
+        String srcTopic="mysql-topic-employee";
+        String targetTopic="cassandra-topic-employee";
+        KStream<String, Employee> inputStream= builder.stream(srcTopic);
+        KStream<String,Employee> transformedStream=inputStream.mapValues(e->{
+            System.out.println("processing employee with id "+e.getId());
+            Employee e1=new Employee();
+            e1.setId(e.getId());
+            e1.setName(e.getName());
+            String designation=e.getDesignation();
+            e1.setDesignation(designation);
+            double salary=30000;
+            if(designation.equals("Developer")) {
+                salary=40000;
+            }
+            else if(designation.equals("Accountant")) {
+                salary=35000;
+            }
+            else if(designation.equals("Architect")) {
+                salary=80000;
+            }
+            e1.setSalary(salary);
+            return e1;
+        });
+        transformedStream.to(targetTopic);
+        return builder.build();
+    }
+
+
+}
+
+To start cassandra server
+
+C:\apache-cassandra-3.11.7\bin>cassandra
+
+To start cassandra client
+
+C:\apache-cassandra-3.11.7\bin>path=c:\Python27;%path%
+
+C:\apache-cassandra-3.11.7\bin>cqlsh
+
+
+cqlsh> create keyspace test_keyspace with replication={'class':'SimpleStrategy','replication_factor':1};
+cqlsh> use test_keyspace;
+cqlsh:test_keyspace> create table emp_tbl(emp_id int,name text,designation text,salary double,primary key(emp_id));
+
+
+%KAFKA_HOME%\config\sink-cassandra-connector.properties
+
+name=cassandra-sink-employee
+connector.class=com.datamountaineer.streamreactor.connect.cassandra.sink.CassandraSinkConnector
+tasks.max=1
+topics=cassandra-topic-employee
+connect.cassandra.kcql=INSERT INTO emp_tbl SELECT id as emp_id,name,designation,salary FROM cassandra-topic-employee
+connect.cassandra.port=9042
+connect.cassandra.key.space=test_keyspace
+connect.cassandra.contact.points=localhost
+connect.cassandra.username=cassandra
+connect.cassandra.password=cassandra
+
+
+connect-standalone c:\kafka_2.12-2.5.0\config\connect-standalone.properties c:\kafka_2.12-2.5.0\config\src-mysql-connector.properties c:\kafka_2.12-2.5.0\config\sink-cassandra-connector.properties
+
+cqlsh:test_keyspace> select * from emp_tbl;
+
+
+kafka-console-consumer --topic mysql-topic-employee --bootstrap-server localhost:9092
+
+
+kafka-console-consumer --topic mysql-topic-employee --bootstrap-server localhost:9092 --from-beginning
+
+
+
+
+
+                                            (converting to upper case)
+local file system------------------->topic-1---------->Streaming App----------->topic-2------>local file system
+c:\input\input.txt           etl-src-topic                                   etl-target-topic  c:\output\output.txt
+
+
+C:\kafka_2.12-2.5.0\config\my-connect-file-source1.properties
+
+name=local-file-source1
+connector.class=FileStreamSource
+tasks.max=1
+file=c:/input/input.txt
+topic=etl-src-topic
+
+C:\kafka_2.12-2.5.0\config\my-connect-file-sink1.properties
+
+name=local-file-sink1
+connector.class=FileStreamSink
+tasks.max=1
+file=c:/output/output.txt
+topics=etl-target-topic
+
+
+kafka-topics --create --topic etl-src-topic --partitions 2 --replication-factor 1 --zookeeper localhost:2181
+kafka-topics --create --topic etl-target-topic --partitions 2 --replication-factor 1 --zookeeper localhost:2181
+
+
+FileStreamingApp.java
+
+package com.boa.training.streams;
+
+import java.util.Properties;
+
+import org.apache.kafka.common.serialization.Serdes.StringSerde;
+import org.apache.kafka.streams.KafkaStreams;
+import org.apache.kafka.streams.StreamsBuilder;
+import org.apache.kafka.streams.StreamsConfig;
+import org.apache.kafka.streams.Topology;
+import org.apache.kafka.streams.kstream.KStream;
+
+public class FileStreamingApp {
+
+    public static void main(String[] args) {
+        // TODO Auto-generated method stub
+        Properties props = new Properties();
+        props.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
+        props.put(StreamsConfig.DEFAULT_KEY_SERDE_CLASS_CONFIG, StringSerde.class.getName());
+        props.put(StreamsConfig.DEFAULT_VALUE_SERDE_CLASS_CONFIG, StringSerde.class.getName());
+        props.put(StreamsConfig.APPLICATION_ID_CONFIG, "file-streaming-app");
+
+        KafkaStreams streams = new KafkaStreams(createTopology(), props);
+        streams.start();
+        System.out.println("streaming started");
+        try {
+            Thread.sleep(10 * 60 * 1000);
+        } catch (InterruptedException e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+        }
+        streams.close();
+        System.out.println("streaming stopped");
+    }
+
+    static Topology createTopology() {
+        StreamsBuilder builder = new StreamsBuilder();
+        KStream<String, String> inputStream = builder.stream("etl-src-topic");
+        KStream<String, String> transformedStream = inputStream.mapValues(v -> {
+            System.out.println("processing " + v);
+            return v.toUpperCase();
+        });
+        transformedStream.to("etl-target-topic");
+        return builder.build();
+    }
+
+}
+
+connect-standalone c:\kafka_2.12-2.5.0\config\connect-standalone.properties c:\kafka_2.12-2.5.0\config\my-connect-file-source1.properties c:\kafka_2.12-2.5.0\config\my-connect-file-sink1.properties
+
+kafka-console-consumer --topic etl-src-topic --bootstrap-server localhost:9092 --from-beginning
+kafka-console-consumer --topic etl-target-topic --bootstrap-server localhost:9092 --from-beginning
+
+
+    jdbc-source-connector                                               |------->dev-topic------>c:/out/dev.txt
+RDBMS-------------------------->myex-topic-employee------>StreamApp-----|------->acct-topic----->acct_topic_tbl(mysql)
+                                                                        |------->others-topic--->other_cas_tbl(cassandra)
+                                                                        
+                                                                        
+                                                                        
+package com.boa.training.streams;
+
+import java.util.Properties;
+
+import org.apache.kafka.common.serialization.Serdes.StringSerde;
+import org.apache.kafka.streams.KafkaStreams;
+import org.apache.kafka.streams.StreamsBuilder;
+import org.apache.kafka.streams.StreamsConfig;
+import org.apache.kafka.streams.Topology;
+import org.apache.kafka.streams.kstream.KStream;
+
+import com.boa.training.domain.Employee;
+import com.boa.training.serde.EmployeeSerde;
+
+public class BranchingStreamApp {
+    public static void main(String[] args) {
+        // TODO Auto-generated method stub
+        Properties props=new Properties();
+        props.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
+        props.put(StreamsConfig.DEFAULT_KEY_SERDE_CLASS_CONFIG, StringSerde.class.getName());
+        props.put(StreamsConfig.DEFAULT_VALUE_SERDE_CLASS_CONFIG, EmployeeSerde.class.getName());
+        props.put(StreamsConfig.APPLICATION_ID_CONFIG,"branching-streaming-app");
+        
+        KafkaStreams streams=new KafkaStreams(createTopology(), props);
+        streams.start();
+        System.out.println("streaming started");
+        try {
+            Thread.sleep(20*60*1000);
+        } catch (InterruptedException e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+        }
+        finally {
+        streams.close();
+        }
+        System.out.println("streaming stopped");
+    }
+    
+    static Topology createTopology()
+    {
+        StreamsBuilder builder=new StreamsBuilder();
+        String srcTopic="myex-topic-employee";
+        String targetTopicDev="dev-topic";
+        String targetTopicAcct="acct-topic";
+        String targetTopicOthers="others-topic";
+        KStream<String, Employee> inputStream= builder.stream(srcTopic);
+        inputStream.filter((key,emp)->emp.getDesignation().equals("Developer"))
+        .to(targetTopicDev);
+        inputStream.filter((key,emp)->emp.getDesignation().equals("Accountant"))
+        .to(targetTopicAcct);
+        inputStream.filter((key,emp)-> !(emp.getDesignation().equals("Developer")
+                ||emp.getDesignation().equals("Accountant")))
+        .to(targetTopicOthers);
+        
+        return builder.build();
+    }
+
+
+}
+
+
+https://archive.apache.org/dist/kafka/2.5.0/kafka-2.5.0-src.tgz
+
+C:\kafka-2.5.0-src\connect\file\src\main\java\org\apache\kafka\connect\file
+
+FileStreamConnector
+
+<dependencies>
+  <!-- https://mvnrepository.com/artifact/org.apache.kafka/connect-api -->
+<dependency>
+    <groupId>org.apache.kafka</groupId>
+    <artifactId>connect-api</artifactId>
+    <version>2.5.0</version>
+</dependency>
+  
+  </dependencies>
+  
+  
+package com.boa.training.connect;
+
+import org.apache.kafka.common.config.AbstractConfig;
+import org.apache.kafka.common.config.ConfigDef;
+import org.apache.kafka.common.config.ConfigDef.Importance;
+import org.apache.kafka.common.config.ConfigDef.Type;
+import org.apache.kafka.common.config.ConfigException;
+import org.apache.kafka.common.utils.AppInfoParser;
+import org.apache.kafka.connect.connector.Task;
+import org.apache.kafka.connect.source.SourceConnector;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Very simple connector that works with the console. This connector supports both source and
+ * sink modes via its 'mode' setting.
+ */
+public class MySourceConnector extends SourceConnector {
+    public static final String TOPIC_CONFIG = "topic";
+    public static final String FILE_CONFIG = "file";
+    public static final String TASK_BATCH_SIZE_CONFIG = "batch.size";
+
+    public static final int DEFAULT_TASK_BATCH_SIZE = 2000;
+
+    private static final ConfigDef CONFIG_DEF = new ConfigDef()
+        .define(FILE_CONFIG, Type.STRING, null, Importance.HIGH, "Source filename. If not specified, the standard input will be used")
+        .define(TOPIC_CONFIG, Type.LIST, Importance.HIGH, "The topic to publish data to")
+        .define(TASK_BATCH_SIZE_CONFIG, Type.INT, DEFAULT_TASK_BATCH_SIZE, Importance.LOW,
+                "The maximum number of records the Source task can read from file one time");
+
+    private String filename;
+    private String topic;
+    private int batchSize;
+
+    @Override
+    public String version() {
+        return AppInfoParser.getVersion();
+    }
+
+    @Override
+    public void start(Map<String, String> props) {
+        AbstractConfig parsedConfig = new AbstractConfig(CONFIG_DEF, props);
+        filename = parsedConfig.getString(FILE_CONFIG);
+        if(filename==null) {
+            filename="c:/sample/test.txt";
+        }
+        List<String> topics = parsedConfig.getList(TOPIC_CONFIG);
+        if (topics.size() != 1) {
+            throw new ConfigException("'topic' in FileStreamSourceConnector configuration requires definition of a single topic");
+        }
+        topic = topics.get(0);
+        batchSize = parsedConfig.getInt(TASK_BATCH_SIZE_CONFIG);
+    }
+
+    @Override
+    public Class<? extends Task> taskClass() {
+        return MySourceTask.class;
+    }
+
+    @Override
+    public List<Map<String, String>> taskConfigs(int maxTasks) {
+        ArrayList<Map<String, String>> configs = new ArrayList<>();
+        // Only one input stream makes sense.
+        Map<String, String> config = new HashMap<>();
+        if (filename != null)
+            config.put(FILE_CONFIG, filename);
+        config.put(TOPIC_CONFIG, topic);
+        config.put(TASK_BATCH_SIZE_CONFIG, String.valueOf(batchSize));
+        configs.add(config);
+        return configs;
+    }
+
+    @Override
+    public void stop() {
+        // Nothing to do since FileStreamSourceConnector has no background monitoring.
+    }
+
+    @Override
+    public ConfigDef config() {
+        return CONFIG_DEF;
+    }
+}
+
+
+package com.boa.training.connect;
+
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
+import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+
+import org.apache.kafka.connect.data.Schema;
+import org.apache.kafka.connect.errors.ConnectException;
+import org.apache.kafka.connect.source.SourceRecord;
+import org.apache.kafka.connect.source.SourceTask;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/**
+ * FileStreamSourceTask reads from stdin or a file.
+ */
+public class MySourceTask extends SourceTask {
+    private static final Logger log = LoggerFactory.getLogger(MySourceTask.class);
+    public static final String FILENAME_FIELD = "filename";
+    public  static final String POSITION_FIELD = "position";
+    private static final Schema VALUE_SCHEMA = Schema.STRING_SCHEMA;
+
+    private String filename;
+    private InputStream stream;
+    private BufferedReader reader = null;
+    private char[] buffer = new char[1024];
+    private int offset = 0;
+    private String topic = null;
+    private int batchSize = MySourceConnector.DEFAULT_TASK_BATCH_SIZE;
+
+    private Long streamOffset;
+
+    @Override
+    public String version() {
+        return new MySourceConnector().version();
+    }
+
+    @Override
+    public void start(Map<String, String> props) {
+        filename = props.get(MySourceConnector.FILE_CONFIG);
+        if (filename == null || filename.isEmpty()) {
+            stream = System.in;
+            // Tracking offset for stdin doesn't make sense
+            streamOffset = null;
+            reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8));
+        }
+        // Missing topic or parsing error is not possible because we've parsed the config in the
+        // Connector
+        topic = props.get(MySourceConnector.TOPIC_CONFIG);
+        batchSize = Integer.parseInt(props.get(MySourceConnector.TASK_BATCH_SIZE_CONFIG));
+    }
+
+    @Override
+    public List<SourceRecord> poll() throws InterruptedException {
+        if (stream == null) {
+            try {
+                stream = Files.newInputStream(Paths.get(filename));
+                Map<String, Object> offset = context.offsetStorageReader().offset(Collections.singletonMap(FILENAME_FIELD, filename));
+                if (offset != null) {
+                    Object lastRecordedOffset = offset.get(POSITION_FIELD);
+                    if (lastRecordedOffset != null && !(lastRecordedOffset instanceof Long))
+                        throw new ConnectException("Offset position is the incorrect type");
+                    if (lastRecordedOffset != null) {
+                        log.debug("Found previous offset, trying to skip to file offset {}", lastRecordedOffset);
+                        long skipLeft = (Long) lastRecordedOffset;
+                        while (skipLeft > 0) {
+                            try {
+                                long skipped = stream.skip(skipLeft);
+                                skipLeft -= skipped;
+                            } catch (IOException e) {
+                                log.error("Error while trying to seek to previous offset in file {}: ", filename, e);
+                                throw new ConnectException(e);
+                            }
+                        }
+                        log.debug("Skipped to offset {}", lastRecordedOffset);
+                    }
+                    streamOffset = (lastRecordedOffset != null) ? (Long) lastRecordedOffset : 0L;
+                } else {
+                    streamOffset = 0L;
+                }
+                reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8));
+                log.debug("Opened {} for reading", logFilename());
+            } catch (NoSuchFileException e) {
+                log.warn("Couldn't find file {} for FileStreamSourceTask, sleeping to wait for it to be created", logFilename());
+                synchronized (this) {
+                    this.wait(1000);
+                }
+                return null;
+            } catch (IOException e) {
+                log.error("Error while trying to open file {}: ", filename, e);
+                throw new ConnectException(e);
+            }
+        }
+
+        // Unfortunately we can't just use readLine() because it blocks in an uninterruptible way.
+        // Instead we have to manage splitting lines ourselves, using simple backoff when no new data
+        // is available.
+        try {
+            final BufferedReader readerCopy;
+            synchronized (this) {
+                readerCopy = reader;
+            }
+            if (readerCopy == null)
+                return null;
+
+            ArrayList<SourceRecord> records = null;
+
+            int nread = 0;
+            while (readerCopy.ready()) {
+                nread = readerCopy.read(buffer, offset, buffer.length - offset);
+                log.trace("Read {} bytes from {}", nread, logFilename());
+
+                if (nread > 0) {
+                    offset += nread;
+                    if (offset == buffer.length) {
+                        char[] newbuf = new char[buffer.length * 2];
+                        System.arraycopy(buffer, 0, newbuf, 0, buffer.length);
+                        buffer = newbuf;
+                    }
+
+                    String line;
+                    do {
+                        line = extractLine();
+                        if (line != null) {
+                            log.trace("Read a line from {}", logFilename());
+                            if (records == null)
+                                records = new ArrayList<>();
+                            records.add(new SourceRecord(offsetKey(filename), offsetValue(streamOffset), topic, null,
+                                    null, null, VALUE_SCHEMA, line, System.currentTimeMillis()));
+
+                            if (records.size() >= batchSize) {
+                                return records;
+                            }
+                        }
+                    } while (line != null);
+                }
+            }
+
+            if (nread <= 0)
+                synchronized (this) {
+                    this.wait(1000);
+                }
+
+            return records;
+        } catch (IOException e) {
+            // Underlying stream was killed, probably as a result of calling stop. Allow to return
+            // null, and driving thread will handle any shutdown if necessary.
+        }
+        return null;
+    }
+
+    private String extractLine() {
+        int until = -1, newStart = -1;
+        for (int i = 0; i < offset; i++) {
+            if (buffer[i] == '\n') {
+                until = i;
+                newStart = i + 1;
+                break;
+            } else if (buffer[i] == '\r') {
+                // We need to check for \r\n, so we must skip this if we can't check the next char
+                if (i + 1 >= offset)
+                    return null;
+
+                until = i;
+                newStart = (buffer[i + 1] == '\n') ? i + 2 : i + 1;
+                break;
+            }
+        }
+
+        if (until != -1) {
+            String result = new String(buffer, 0, until);
+            System.arraycopy(buffer, newStart, buffer, 0, buffer.length - newStart);
+            offset = offset - newStart;
+            if (streamOffset != null)
+                streamOffset += newStart;
+            return result;
+        } else {
+            return null;
+        }
+    }
+
+    @Override
+    public void stop() {
+        log.trace("Stopping");
+        synchronized (this) {
+            try {
+                if (stream != null && stream != System.in) {
+                    stream.close();
+                    log.trace("Closed input stream");
+                }
+            } catch (IOException e) {
+                log.error("Failed to close FileStreamSourceTask stream: ", e);
+            }
+            this.notify();
+        }
+    }
+
+    private Map<String, String> offsetKey(String filename) {
+        return Collections.singletonMap(FILENAME_FIELD, filename);
+    }
+
+    private Map<String, Long> offsetValue(Long pos) {
+        return Collections.singletonMap(POSITION_FIELD, pos);
+    }
+
+    private String logFilename() {
+        return filename == null ? "stdin" : filename;
+    }
+}
+
+  
+  
+%KAFKA_HOME%\config\userdefined-connect-file-source.properties
+
+name=user-defined-file-source-connector
+connector.class=com.boa.training.connect.MySourceConnector
+tasks.max=1
+topic=user-connect-topic
+
+connect-standalone c:\kafka_2.12-2.5.0\config\connect-standalone.properties c:\kafka_2.12-2.5.0\config\userdefined-connect-file-source.properties
+
+kafka-console-consumer --topic user-connect-topic --bootstrap-server localhost:9092 --from-beginning
+
+SPARK_HOME-----------------C:\spark-3.1.3-bin-hadoop2.7
+
+HADOOP_HOME----------------C:\hadoop-2.7.0
+
+
+Add the following 3 values to the path.
+%SPARK_HOME%\bin
+
+%HADOOP_HOME%\sbin
+
+%HADOOP_HOME%\bin
+
+
+Run below command from spark bin command promt
+spark-shell
+
+
+cala> val rdd1=sc.textFile("c:/sample/test.txt")
+
+scala> rdd1.collect()
+
+
+scala> rdd1.count()
+res1: Long = 4
+
+scala> rdd1.take(2)
+
+scala> val rdd2=rdd1.map(s=>s.toUpperCase())
+rdd2: org.apache.spark.rdd.RDD[String] = MapPartitionsRDD[2] at map at <console>:25
+
+scala> rdd2.collect()
+
+new maven project SparkCoreProj
+
+<dependencies>
+  <!-- https://mvnrepository.com/artifact/org.apache.spark/spark-core -->
+<dependency>
+    <groupId>org.apache.spark</groupId>
+    <artifactId>spark-core_2.12</artifactId>
+    <version>3.1.1</version>
+</dependency>
+  
+  </dependencies>
+  
+  
+  
+
+
+package com.boa.training.sparkcore;
+
+import java.util.List;
+
+import org.apache.spark.SparkConf;
+import org.apache.spark.api.java.JavaRDD;
+import org.apache.spark.api.java.JavaSparkContext;
+
+public class RDDCreationTest {
+public static void main(String[] args) {
+    SparkConf conf=new SparkConf();
+    conf.setAppName("rdd-creation-test");
+    conf.setMaster("local[*]");
+    JavaSparkContext sc=new JavaSparkContext(conf);
+    JavaRDD<String> rdd1=sc.textFile("c:/sample/test.txt");
+    List<String> list= rdd1.collect();
+    list.forEach(System.out::println);
+}
+}
+
+
+<dependencies>
+  <!-- https://mvnrepository.com/artifact/org.apache.spark/spark-core -->
+  <!--  
+<dependency>
+    <groupId>org.apache.spark</groupId>
+    <artifactId>spark-core_2.12</artifactId>
+    <version>3.1.1</version>
+</dependency>
+-->
+<!-- https://mvnrepository.com/artifact/org.apache.spark/spark-streaming -->
+<dependency>
+    <groupId>org.apache.spark</groupId>
+    <artifactId>spark-streaming_2.12</artifactId>
+    <version>3.1.1</version>
+ </dependency>   
+    <!-- https://mvnrepository.com/artifact/org.apache.spark/spark-streaming-kafka-0-10 -->
+<dependency>
+    <groupId>org.apache.spark</groupId>
+    <artifactId>spark-streaming-kafka-0-10_2.12</artifactId>
+    <version>3.1.1</version>
+</dependency>
+    
+ 
+  </dependencies>
+  
+  kafka-topics --create --topic test-sparkstream-topic --partitions 4 --replication-factor 1 --zookeeper localhost:2181
+  
+  
+  

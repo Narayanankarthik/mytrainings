@@ -1,0 +1,351 @@
+Pair RDD is an rdd where each element is a 2 element tuple.
+
+flatMap() is equivalent to combination of map and flatten.
+
+flatten------------converts a two dimensional collection to one dimensional collection.
+
+
+		Extract			Transform	Load
+Kafka Topic----------------------->Spark Streaming App-------------------->HDFS
+test-sparkstream-topic		    (word count app)
+
+
+DStream-------------Discretized Stream--------------batches of RDDs in n seconds.
+
+
+
+
+Kafka Cluster:
+
+Collection of kafka brokers connected to same zookeeper url.
+
+A topic spreads across multiple brokers in the cluster.
+
+The single partition can be replicated in multiple brokers based on the replication factor
+to support fault tolerance.
+
+A single partition can't spread across multiple nodes.
+
+
+There is no master slave architecture in kafka.
+
+All the meta data is maintained by zookeeper.
+
+Each broker in the cluster should have uniquer broker id.
+
+
+		broker.id	port		log-dir
+
+broker-1	  1		9091		/tmp/kafka-logs-1
+
+broker-2	  2		9092		/tmp/kafka-logs-2	
+
+broker-3	  3		9093		/tmp/kafka-logs-3
+
+
+step-1:
+
+Close any zookeeper or kafka instances if they are running and clear the /tmp directory.
+
+step-2:
+
+create 3 copies of %KAFKA_HOME%\config\server.properties and rename them as 
+server-1.properties,server-2.properties and server-3.properties respectively.
+
+step-3
+
+change the properties in these properties files as shown below.
+
+properties to be changed in server-1.properties 
+
+broker.id=1
+listeners=PLAINTEXT://:9091
+log.dirs=/tmp/kafka-logs-1
+
+
+properties to be changed in server-2.properties 
+
+broker.id=2
+listeners=PLAINTEXT://:9092
+log.dirs=/tmp/kafka-logs-2
+
+properties to be changed in server-3.properties 
+
+broker.id=3
+listeners=PLAINTEXT://:9093
+log.dirs=/tmp/kafka-logs-3
+
+step-4:
+
+create 3 batch files in the %KAFKA_HOME% directory as shown below.
+
+%KAFKA_HOME%\start-server-1.bat
+start "Server-1" kafka-server-start config/server-1.properties
+
+
+%KAFKA_HOME%\start-server-2.bat
+start "Server-2" kafka-server-start config/server-2.properties
+
+%KAFKA_HOME%\start-server-3.bat
+start "Server-3" kafka-server-start config/server-3.properties
+
+step-5:
+start the zookeeper
+
+open a new command window and run the following command.
+
+zookeeper-server-start c:\kafka_2.12-2.5.0\config\zookeeper.properties
+
+step-6:
+
+Double click on start-server-1.bat,start-server-2.bat and start-server-3.bat to start the
+respective servers.
+
+Leader:
+
+Each partition is associated with a leader broker which handles all read and write requests for that partition.
+
+	Topic: test-topic       Partition: 0    Leader: 1       Replicas: 1,2   Isr: 1,2
+        Topic: test-topic       Partition: 1    Leader: 2       Replicas: 2,3   Isr: 2,3
+        Topic: test-topic       Partition: 2    Leader: 3       Replicas: 3,1   Isr: 3,1
+        Topic: test-topic       Partition: 3    Leader: 1       Replicas: 1,3   Isr: 1,3
+
+Replicas are the brokers where the partition is replicated.
+
+Among the replicas, one of them will be the leader and other will be followers.
+
+The followers passively replicate from the leader broker.
+
+broker			partitions
+broker-1----------------0,2,3
+broker-2----------------0,1
+broker-3----------------1,2,3
+
+ISR-------------In Sync Replicas------------Among the replicas, which are in sync with the leader.
+
+
+If the leader is broker is down, one of the followers will be elected as the leader.
+
+If you specify any one of the broker's url of the cluster with the console producer or console consumer 
+commands, it is equivalent to specifyng the entire cluster's url.
+
+localhost:9091-----------------localhost:9091,localhost:9092,localhost:9093
+
+
+kafka security:
+
+
+Kafka uses SASL protocol to enable authentication and authorization.
+
+authentication----------------who you are.
+authorization-----------------what rights you have.
+
+
+SASL---------------Simple Authentication Security Layer
+
+SASL uses internally JAAS api.
+
+JAAS--------------------------Java Authentication and Authorization Service.
+
+
+steps:
+
+1. close any zookeeper or kafka server instances if they are running and clear the c:/tmp directory.
+2. create a copy of server.properties and rename it as server-secure.properties.
+3. add the following properties to server-secure.properties
+
+listeners=SASL_PLAINTEXT://localhost:9092
+security.inter.broker.protocol=SASL_PLAINTEXT
+sasl.mechanism.inter.broker.protocol=PLAIN
+sasl.enabled.mechanisms=PLAIN
+
+4. create a file called server-jaas.conf under %KAFKA_HOME%\config directory and add the following content
+to it.
+
+KafkaServer {
+   org.apache.kafka.common.security.plain.PlainLoginModule required
+   username="admin"
+   password="admin-secret"
+   user_admin="admin-secret"
+   user_alice="alice-secret"
+   user_aaa="bbb";
+}
+
+
+
+5. start the zookeeper
+
+
+zookeeper-server-start c:\kafka_2.12-2.5.0\config\zookeeper.properties
+
+6. start the kafka server with the following commands.
+
+set KAFKA_OPTS=-Djava.security.auth.login.config=%KAFKA_HOME%/config/server-jaas.conf
+
+kafka-server-start c:\kafka_2.12-2.5.0\config\server-secure.properties
+
+7. create a new topic with the following command.
+
+kafka-topics --create --topic test-security-topic --partitions 3 --replication-factor 1 --zookeeper localhost:2181
+
+8. create the directory c:/secureclient and add the following files to it.
+
+c:/secureclient/client.properties
+
+security.protocol=SASL_PLAINTEXT
+sasl.mechanism=PLAIN
+        
+        
+c:/secureclient/client-jaas.conf
+
+KafkaClient {
+  org.apache.kafka.common.security.plain.PlainLoginModule required
+  username="alice"
+  password="alice-secret";
+};
+
+
+c:/secureclient/consumer-jaas.conf
+
+
+KafkaClient {
+  org.apache.kafka.common.security.plain.PlainLoginModule required
+  username="aaa"
+  password="bbb";
+};
+
+9. start the kafka-console-producer with the following commands.
+C:\Users\Administrator>set KAFKA_OPTS=-Djava.security.auth.login.config=c:/secureclient/client-jaas.conf
+
+C:\Users\Administrator>kafka-console-producer --topic test-security-topic --bootstrap-server localhost:9092 --producer.config c:/secureclient/client.properties
+
+10. start the kafka-console-consumer with the following commands.
+C:\Users\Administrator>set KAFKA_OPTS=-Djava.security.auth.login.config=c:/secureclient/consumer-jaas.conf
+
+C:\Users\Administrator>kafka-console-consumer --topic test-security-topic --bootstrap-server localhost:9092 --consumer.config c:/secureclient/client.properties
+
+
+
+SSL(Secure Socket Layer) ensures data integrity and confidentiality.
+
+data confidentiality-----------data is not visible to any one other than the sender and receiver
+data integrity-----------------ensures that the data sent is the data received---no body modifies
+in the middle.
+
+
+SSL---------key-pair mechanism
+PKI------------------Public Key Infrastrucure
+
+private key --------kept with the server--------used for dechrypting the data sent by the client.
+public key----------kept with the client--------used for enchrypting the data being sent by the client.
+
+pki ensures that the data enchrypted using the public key can be dechrypted only using the private key.
+
+First time, when the client sends the request to the server through ssl, the server sends a public key in the form of a certificate to the client.
+Client can trust any certificate sent by the server if it is signed by a certificate authority.
+
+Examples of certificate authorities are Verisign, Thwate and etc.
+
+We can also create a certificate autority using openssl.
+
+We shall generate a key and certificate using the keystore tool provided by jdk.
+We shall use openssl to create a certificate authority.
+
+steps:
+1. create the directory c:\sslkeys to store the key and certificate of kafka server
+
+2. Generate a ssl key and store it in a keystore.
+keystore is a repository of ssl certificates. 
+using password as the password.
+keytool -keystore c:/sslkeys/server.keystore.jks -alias localhost -validity 365 -genkey -keyalg RSA
+This command is used to generate the key and certificate for the server machine. 
+This certificate is valid for 365 days and the algorithm used is RSA(Rivest-Shamir-Alderman).
+3. create the directory c:\cakeys to store the key and certificate of the certificate authority.
+4. Generate the certificate and key for certificate authority.
+openssl req -config C:\openssl\openssl.cnf -new -x509 -keyout c:/cakeys/ca-key -out c:/cakeys/ca-cert -days 365
+using capassword as the password.
+
+This command creates CA certificate and key pair. The certificate is stored in c:/cakeys/cacert file and key
+is stored in c:/cakeys/ca-key file.
+5. Extract the kafka server's certificate from server keystore.
+----this will create a certificate request so that it can be submitted to the certificate authority for 
+signing.
+
+keytool -keystore c:/sslkeys/server.keystore.jks -alias localhost -certreq -file c:/sslkeys/cert-req-file
+
+
+6. sign the certificate with the certificate authority.
+
+openssl x509 -req -CA c:/cakeys/ca-cert -CAkey c:/cakeys/ca-key -in c:/sslkeys/cert-req-file -out c:/sslkeys/cert-signed -days 365 -CAcreateserial -passin pass:capassword
+
+7. You need to import both  the certificate of the CA and the signed certificate of the server to the 
+server's keystore.
+keytool -keystore c:/sslkeys/server.keystore.jks -alias CARoot -import -file c:/cakeys/ca-cert
+
+keytool -keystore c:/sslkeys/server.keystore.jks -alias localhost -import -file c:/sslkeys/cert-signed
+
+
+8. Trust store is a repository to store certificates from trusted certificate authorites(CA) which
+is used to verify whether the certificate presented by server is trustable or not.
+
+create the directory c:/servertruststore to store the certificates trusted by server
+create the directory c:/clienttruststore to store the certificates trusted by client
+
+keytool -keystore c:/servertruststore/server.truststore.jks -alias CARoot -import -file c:/cakeys/ca-cert
+
+keytool -keystore c:/clienttruststore/client.truststore.jks -alias CARoot -import -file c:/cakeys/ca-cert
+
+
+9. create the directory c:/sslclient and create the file client.properties with the following content.
+
+security.protocol=SSL
+ssl.truststore.location=C:/clienttruststore/client.truststore.jks
+ssl.truststore.password=password
+ssl.endpoint.identification.algorithm=
+
+through this, we configure that  a kafka client can trust any certificate signed by a certificate authority 
+stored in client.truststore.jks file.
+ie if a kafka server provides a certificate signed by a certificate authority whose root certificate is ca-cert, then the kafka client can trust that certificate.
+
+10. create a copy of %KAFKA_HOME%\config\server.properties and rename it as server-ssl.properties
+
+Add the following properties to server-ssl.properties
+
+ssl.keystore.location=C:/sslkeys/server.keystore.jks
+ssl.keystore.password=password
+ssl.key.password=password
+ssl.truststore.location=C:/servertruststore/server.truststore.jks
+ssl.truststore.password=password
+listeners=PLAINTEXT://localhost:9092,SSL://localhost:9093
+
+11. shutdown any zookeeper or kafka server instances if they are running and clear the /tmp directory.
+
+12. start the zookeeper
+zookeeper-server-start c:\kafka_2.12-2.5.0\config\zookeeper.properties
+
+13. start the kafka server using server-ssl.properties file.
+
+kafka-server-start c:\kafka_2.12-2.5.0\config\server-ssl.properties
+
+14. create a topic called test-ssl-topic.
+
+kafka-topics --create --topic test-ssl-topic --partitions 4 --replication-factor 1 --zookeeper localhost:2181
+
+15. start a ssl client console producer using the following command.
+
+kafka-console-producer --topic test-ssl-topic --bootstrap-server localhost:9093 --producer.config c:\sslclient\client.properties
+
+16. start a ssl client console consumer using the following command.
+
+kafka-console-producer --topic test-ssl-topic --bootstrap-server localhost:9093 --consumer.config c:\sslclient\client.properties
+
+
+
+
+
+
+
+
+
+
+	

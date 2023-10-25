@@ -1,0 +1,390 @@
+Confluent Platform:
+
+The confluent platform provides an eco system for kafka along with some additional components.
+
+Components provided by confluent platform:
+zookeeper
+kafka server
+connect
+schema-registry------------registry for publishing avro schema
+rest-proxy-----------------exposes restful webservices to interact with kafka
+ksql-server----------------exposes sql based interface to interact with kafka
+control-center-------------exposes a web based monitoring and administration tool
+
+Confluent platform is not available for windows.
+Available only in unix flavours.
+
+confluent sub directories:
+
+bin----------------------binary scripts
+etc----------------------config files
+share--------------------library jar files
+lib----------------------contains details of system services
+
+
+Avro Format:
+
+Avro is a data serialization and interchange format very popular in the big data world.
+It stores the schema and the data together.
+The schema is in json format and data is in binary format making it more compact and efficient.
+ 
+Every time, if the sender sends the schema and data together, it becomes a fatty message.
+To address this problem, the schema registry is used.
+First time, when an avro data is sent, the schema is registered in the schema registry with an id and 
+this id is shared with the consumer.
+So next time , the sender can send only the id and the data.
+The consumer can identify the schema of the avro data from this id.
+Through the id , it retrieves the schema and validates the data with the schema.
+
+
+sample avro schema:
+
+{
+"namespace":"com.boa.training.empschema",
+"type":"record",
+"name":"employee",
+"fields":[
+	{"name":"empId","type":"int"},
+	{"name":"name","type":"string"},
+	{"name":"designation","type":"string"}
+]
+}
+
+When avro data is sent, it is sent in the format of GenericRecord in java code.
+
+For more info on schema registry and avro format, refer the url
+
+https://dzone.com/articles/kafka-avro-serialization-and-the-schema-registry
+
+Rest Proxy:
+Exposes restful webservices to interact with kafka.
+Runs at port 8082
+
+
+For more info in restproxy and the urls exposed by it, refer the url
+
+https://docs.confluent.io/platform/current/kafka-rest/quickstart.html
+
+Kafka connect:
+
+It is the process of importing data from external data sources into a kafka topic and exporting data
+from a kafka topic to external data sources.
+
+The external data sources include rdbms, no sql dbs,local file system,HDFS,elastic search and etc.
+
+The connect process is achieved with the help of connectors.
+Connectors are readymade java components developed using kafka-connect-api.
+The connectors are either provided by apache kafka on its own or by third party vendors like confluent,
+lenses.io and etc.
+
+Similarly we can also develop user defined kafka connectors.
+
+The connectors are of two types:
+
+1. Source Connector-------used to import data from data source into topic
+2. Sink Connector---------used to export data from topic into data source
+
+DataSource------------------->Kafka Topic-------------------->Data Source
+(source)  source connector			sink connector	(sink)
+
+
+	Source Connector		Sink Connector
+RDBMS----------------------->Kafka Topic-------------->Cassandra
+
+	Source Connector			    Kafka Streaming App			sink connector	
+RDBMS----------------------->Kafka Topic 1---------->Streaming App----------->Kafka Topic 2---------->Cassandra
+	Extract						Transform			    Load
+
+
+		file-src-connector	   file-sink-connector
+Local File System-------------->Kafka Topic--------------->Local File System
+c:\test\first.txt		test-connector-topic	  c:\testout\first-out.txt
+
+Apache kafka itself provides connectors for local file system.
+
+steps:
+1. create the file c:\test\first.txt
+
+2. create a copy of %KAFKA_HOME%\config\connect-file-source.properties and rename it as
+my-connect-file-source.properties
+
+3. Modify the content of %KAFKA_HOME%\config\my-connect-file-source.properties as shown below.
+
+name=local-file-source
+connector.class=FileStreamSource
+tasks.max=1
+file=c:/test/first.txt
+topic=test-connector-topic
+
+
+4. create a copy of %KAFKA_HOME%\config\connect-file-sink.properties and rename it as
+my-connect-file-sink.properties
+
+5. Modify the content of %KAFKA_HOME%\config\my-connect-file-sink.properties as shown below.
+
+name=local-file-sink
+connector.class=FileStreamSink
+tasks.max=1
+file=c:/test/first-out.txt
+topics=test-connector-topic
+
+6. start the connect process using the following
+
+connect-standalone	location_of_connect-standalone.properties connector_property_file_1 connector_property_file_2
+
+ 
+connect-standalone c:\kafka_2.12-2.5.0\config\connect-standalone.properties c:\kafka_2.12-2.5.0\config\my-connect-file-source.properties c:\kafka_2.12-2.5.0\config\my-connect-file-sink.properties
+
+
+Streaming:
+Kafka streaming api is used to deal with real time data.
+It is used to create streaming application which continuously look for new data in a topic, picks them, transform them and write the transformed data to another topic.
+
+The streaming app acts as both consumer and producer.
+
+So it needs both serializer and deserializer.
+
+Serde:
+Special object used by streaming application and it is a combination of serializer and deserializer.
+Kafka streaming api provides inbuilt serde objects for fundamental classes like Integer ,String and etc.
+
+
+Topology is a graph which denotes the flow of data from source topic to target topic.
+
+	(string data)			(convert to uppercase)	   (contains the transformed data)	
+	test-src-topic---------------->Streaming App------------->test-target-topic
+
+
+sample topology:
+
+		|---------->developer-topic
+Streaming-------|---------->accountant-topic
+		|---------->architect-topic
+
+
+
+        (src-mysql-connector.properties)		               (sink-cassandra-connector.properties)   					
+(mysql)	Source Connector			    Kafka Streaming App			sink connector	
+RDBMS----------------------->Kafka Topic 1---------->Streaming App----------->Kafka Topic 2---------->Cassandra
+	Extract		mysql-topic-employee		Transform   cassandra-topic-employee	Load
+
+
+problem statement
+
+mysql-table
+
+id	name	designation
+12444	Rajiv	Developer
+43551	Surya	Accountant
+
+The etl pipeline will pickup the data from mysql-table , publish it to the topic mysql-topic-employee 
+and the streaming app will transform the data.
+
+The transformation will add a new column called salary and calculate the salary based on the designation.
+
+After the transformation, it is published to the topic cassandra-topic-employee.
+
+The cassandra sink connector will pick up the data from the topic cassandra-topic-employee and load it
+to the cassandra table.
+
+cassandra-table
+
+emp_id	name	designation	salary 
+12444	Rajiv	Developer	30000	
+43551	Surya	Accountant	25000
+
+
+steps:
+
+1. create table called employee in mysql with the following strucure
+
+id		int	primary key & auto_increment
+name		varchar(20)
+designation	varchar(20)
+
+mysql> create database trainingdb;
+Query OK, 1 row affected (0.00 sec)
+
+mysql> use trainingdb;
+Database changed
+mysql> create table employee(id integer auto_increment,name varchar(20),designation varchar(20),primary key(id));
+
+mysql> insert into employee values(1001,"Arvind","Accountant");
+Query OK, 1 row affected (0.00 sec)
+
+mysql> insert into employee(name,designation) values("Surya","Developer");
+Query OK, 1 row affected (0.00 sec)
+
+mysql> insert into employee(name,designation) values("Amar","Architect");
+
+mysql> select * from employee;
+
+2. Download confluent's kafka-jdbc-connector from https://d1i4a15mxbxib1.cloudfront.net/api/plugins/confluentinc/kafka-connect-jdbc/versions/10.7.4/confluentinc-kafka-connect-jdbc-10.7.4.zip and extract it in the same directory.
+
+3. From the extracted directory, copy lib\kafka-connect-jdbc-version.jar to %KAFKA_HOME%\libs directory.
+
+4. create a file called src-mysql-connector.properties under %KAFKA_HOME%\config directory and add the
+following content.
+
+name=mysql-source-connector
+connector.class=io.confluent.connect.jdbc.JdbcSourceConnector
+tasks.max=10
+
+connection.url=jdbc:mysql://mysql.localhost:3306/trainingdb?user=root&password=rps@12345
+table.whitelist=employee
+
+mode=incrementing
+incrementing.column.name=id
+#topic name is mysql-topic-employee
+topic.prefix=mysql-topic-
+
+5. Download the jdbc driver for mysql https://downloads.mysql.com/archives/get/p/3/file/mysql-connector-java-5.1.45.tar.gz and extract it in the same directory.
+
+6. Copy the mysql-connector-java-version.jar to %KAFKA_HOME%\libs directory
+
+7. create the streaming app
+
+package com.boa.training.domain;
+
+public class Employee {
+    private int id;
+    private String name;
+    private String designation;
+    private double salary;
+    public int getId() {
+        return id;
+    }
+    public void setId(int id) {
+        this.id = id;
+    }
+    public String getName() {
+        return name;
+    }
+    public void setName(String name) {
+        this.name = name;
+    }
+    public String getDesignation() {
+        return designation;
+    }
+    public void setDesignation(String designation) {
+        this.designation = designation;
+    }
+    public double getSalary() {
+        return salary;
+    }
+    public void setSalary(double salary) {
+        this.salary = salary;
+    }
+    public Employee(int id, String name, String designation, double salary) {
+        super();
+        this.id = id;
+        this.name = name;
+        this.designation = designation;
+        this.salary = salary;
+    }
+    public Employee() {
+        super();
+        // TODO Auto-generated constructor stub
+    }
+    
+    
+
+}
+
+
+
+
+package com.boa.training.serialzer;
+
+import org.apache.kafka.common.serialization.Serializer;
+
+import com.boa.training.domain.Employee;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+public class EmployeeSerializer implements Serializer<Employee> {
+    private ObjectMapper mapper=new ObjectMapper();
+    @Override
+    public byte[] serialize(String topic, Employee e) {
+        // TODO Auto-generated method stub
+        byte[] array=null;
+        try {
+            array=mapper.writeValueAsBytes(e);
+            System.out.println("serialized to "+new String(array));
+        } catch (JsonProcessingException e1) {
+            // TODO Auto-generated catch block
+            e1.printStackTrace();
+        }
+        return array;
+    }
+
+}
+
+
+package com.boa.training.deserializer;
+
+import java.io.IOException;
+
+import org.apache.kafka.common.serialization.Deserializer;
+
+import com.boa.training.domain.Employee;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+public class EmployeeDeserializer implements Deserializer<Employee> {
+
+    private ObjectMapper mapper=new ObjectMapper();
+    @Override
+    public Employee deserialize(String topic, byte[] array) {
+        // TODO Auto-generated method stub
+        Employee e=null;
+        try {
+            e=mapper.readValue(array, Employee.class);
+        } catch (IOException e1) {
+            // TODO Auto-generated catch block
+            e1.printStackTrace();
+        }
+        System.out.println("checking for null"+(e==null));
+        if(e==null) {
+            e=new Employee();
+        }
+        return e;
+    }
+
+}
+
+
+
+
+User Defined Serde:
+
+This should implement an interface called Serde which contains 2 methods namely serializer() and deserializer().
+
+package com.boa.training.serde;
+
+import org.apache.kafka.common.serialization.Deserializer;
+import org.apache.kafka.common.serialization.Serde;
+import org.apache.kafka.common.serialization.Serializer;
+
+import com.boa.training.domain.Employee;
+
+public class EmployeeSerde implements Serde<Employee>{
+
+    @Override
+    public Deserializer<Employee> deserializer() {
+        // TODO Auto-generated method stub
+        return new EmployeeDeserializer();
+    }
+
+    @Override
+    public Serializer<Employee> serializer() {
+        // TODO Auto-generated method stub
+        return new EmployeeSerializer();
+    }
+
+}
+
+
+
+
+
+

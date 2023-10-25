@@ -1,0 +1,423 @@
+
+
+        (src-mysql-connector.properties)		               (sink-cassandra-connector.properties)   					
+(mysql)	Source Connector			    Kafka Streaming App			sink connector	
+RDBMS----------------------->Kafka Topic 1---------->Streaming App----------->Kafka Topic 2---------->Cassandra
+	Extract		mysql-topic-employee		Transform   cassandra-topic-employee	Load
+
+
+problem statement
+
+mysql-table
+
+id	name	designation
+12444	Rajiv	Developer
+43551	Surya	Accountant
+
+The etl pipeline will pickup the data from mysql-table , publish it to the topic mysql-topic-employee 
+and the streaming app will transform the data.
+
+The transformation will add a new column called salary and calculate the salary based on the designation.
+
+After the transformation, it is published to the topic cassandra-topic-employee.
+
+The cassandra sink connector will pick up the data from the topic cassandra-topic-employee and load it
+to the cassandra table.
+
+cassandra-table
+
+emp_id	name	designation	salary 
+12444	Rajiv	Developer	30000	
+43551	Surya	Accountant	25000
+
+
+steps:
+
+1. create table called employee in mysql with the following strucure
+
+id		int	primary key & auto_increment
+name		varchar(20)
+designation	varchar(20)
+
+mysql> create database trainingdb;
+Query OK, 1 row affected (0.00 sec)
+
+mysql> use trainingdb;
+Database changed
+mysql> create table employee(id integer auto_increment,name varchar(20),designation varchar(20),primary key(id));
+
+mysql> insert into employee values(1001,"Arvind","Accountant");
+Query OK, 1 row affected (0.00 sec)
+
+mysql> insert into employee(name,designation) values("Surya","Developer");
+Query OK, 1 row affected (0.00 sec)
+
+mysql> insert into employee(name,designation) values("Amar","Architect");
+
+mysql> select * from employee;
+
+2. Download confluent's kafka-jdbc-connector from https://d1i4a15mxbxib1.cloudfront.net/api/plugins/confluentinc/kafka-connect-jdbc/versions/10.7.4/confluentinc-kafka-connect-jdbc-10.7.4.zip and extract it in the same directory.
+
+3. From the extracted directory, copy lib\kafka-connect-jdbc-version.jar to %KAFKA_HOME%\libs directory.
+
+4. create a file called src-mysql-connector.properties under %KAFKA_HOME%\config directory and add the
+following content.
+
+name=mysql-source-connector
+connector.class=io.confluent.connect.jdbc.JdbcSourceConnector
+tasks.max=10
+
+connection.url=jdbc:mysql://mysql.localhost:3306/trainingdb?user=root&password=rps@12345
+table.whitelist=employee
+
+mode=incrementing
+incrementing.column.name=id
+#topic name is mysql-topic-employee
+topic.prefix=mysql-topic-
+
+5. Download the jdbc driver for mysql https://downloads.mysql.com/archives/get/p/3/file/mysql-connector-java-5.1.45.tar.gz and extract it in the same directory.
+
+6. Copy the mysql-connector-java-version.jar to %KAFKA_HOME%\libs directory
+
+7. create the streaming app
+
+package com.boa.training.domain;
+
+public class Employee {
+    private int id;
+    private String name;
+    private String designation;
+    private double salary;
+    public int getId() {
+        return id;
+    }
+    public void setId(int id) {
+        this.id = id;
+    }
+    public String getName() {
+        return name;
+    }
+    public void setName(String name) {
+        this.name = name;
+    }
+    public String getDesignation() {
+        return designation;
+    }
+    public void setDesignation(String designation) {
+        this.designation = designation;
+    }
+    public double getSalary() {
+        return salary;
+    }
+    public void setSalary(double salary) {
+        this.salary = salary;
+    }
+    public Employee(int id, String name, String designation, double salary) {
+        super();
+        this.id = id;
+        this.name = name;
+        this.designation = designation;
+        this.salary = salary;
+    }
+    public Employee() {
+        super();
+        // TODO Auto-generated constructor stub
+    }
+    
+    
+
+}
+
+
+
+
+package com.boa.training.serialzer;
+
+import org.apache.kafka.common.serialization.Serializer;
+
+import com.boa.training.domain.Employee;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+public class EmployeeSerializer implements Serializer<Employee> {
+    private ObjectMapper mapper=new ObjectMapper();
+    @Override
+    public byte[] serialize(String topic, Employee e) {
+        // TODO Auto-generated method stub
+        byte[] array=null;
+        try {
+            array=mapper.writeValueAsBytes(e);
+            System.out.println("serialized to "+new String(array));
+        } catch (JsonProcessingException e1) {
+            // TODO Auto-generated catch block
+            e1.printStackTrace();
+        }
+        return array;
+    }
+
+}
+
+
+package com.boa.training.deserializer;
+
+import java.io.IOException;
+
+import org.apache.kafka.common.serialization.Deserializer;
+
+import com.boa.training.domain.Employee;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+public class EmployeeDeserializer implements Deserializer<Employee> {
+
+    private ObjectMapper mapper=new ObjectMapper();
+    @Override
+    public Employee deserialize(String topic, byte[] array) {
+        // TODO Auto-generated method stub
+        Employee e=null;
+        try {
+            e=mapper.readValue(array, Employee.class);
+        } catch (IOException e1) {
+            // TODO Auto-generated catch block
+            e1.printStackTrace();
+        }
+        System.out.println("checking for null"+(e==null));
+        if(e==null) {
+            e=new Employee();
+        }
+        return e;
+    }
+
+}
+
+
+
+
+User Defined Serde:
+
+This should implement an interface called Serde which contains 2 methods namely serializer() and deserializer().
+
+package com.boa.training.serde;
+
+import org.apache.kafka.common.serialization.Deserializer;
+import org.apache.kafka.common.serialization.Serde;
+import org.apache.kafka.common.serialization.Serializer;
+
+import com.boa.training.domain.Employee;
+
+public class EmployeeSerde implements Serde<Employee>{
+
+    @Override
+    public Deserializer<Employee> deserializer() {
+        // TODO Auto-generated method stub
+        return new EmployeeDeserializer();
+    }
+
+    @Override
+    public Serializer<Employee> serializer() {
+        // TODO Auto-generated method stub
+        return new EmployeeSerializer();
+    }
+
+}
+
+
+
+
+
+
+package com.boa.training.streams;
+
+import java.util.Properties;
+
+import org.apache.kafka.common.serialization.Serdes.StringSerde;
+import org.apache.kafka.streams.KafkaStreams;
+import org.apache.kafka.streams.StreamsBuilder;
+import org.apache.kafka.streams.StreamsConfig;
+import org.apache.kafka.streams.Topology;
+import org.apache.kafka.streams.kstream.KStream;
+
+import com.boa.training.domain.Employee;
+import com.boa.training.serde.EmployeeSerde;
+
+public class MySqlToCassandraETLStreamingApp {
+    
+    public static void main(String[] args) {
+        // TODO Auto-generated method stub
+        Properties props=new Properties();
+        props.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
+        props.put(StreamsConfig.DEFAULT_KEY_SERDE_CLASS_CONFIG, StringSerde.class.getName());
+        props.put(StreamsConfig.DEFAULT_VALUE_SERDE_CLASS_CONFIG, EmployeeSerde.class.getName());
+        props.put(StreamsConfig.APPLICATION_ID_CONFIG,"mysql-cassandra-etl-app");
+        
+        KafkaStreams streams=new KafkaStreams(createTopology(), props);
+        streams.start();
+        System.out.println("streaming started");
+        try {
+            Thread.sleep(10*60*1000);
+        } catch (InterruptedException e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+        }
+        System.out.println("streaming stopped");
+    }
+    
+    static Topology createTopology()
+    {
+        StreamsBuilder builder=new StreamsBuilder();
+        String srcTopic="mysql-topic-employee";
+        String targetTopic="cassandra-topic-employee";
+        KStream<String, Employee> inputStream= builder.stream(srcTopic);
+        KStream<String,Employee> transformedStream=inputStream.mapValues(e->{
+            System.out.println("processing employee with id "+e.getId());
+            Employee e1=new Employee();
+            e1.setId(e.getId());
+            e1.setName(e.getName());
+            String designation=e.getDesignation();
+            e1.setDesignation(designation);
+            double salary=30000;
+            if(designation.equals("Developer")) {
+                salary=40000;
+            }
+            else if(designation.equals("Accountant")) {
+                salary=35000;
+            }
+            else if(designation.equals("Architect")) {
+                salary=80000;
+            }
+            e1.setSalary(salary);
+            return e1;
+        });
+        transformedStream.to(targetTopic);
+        return builder.build();
+    }
+
+
+}
+
+
+8. create the cassandra table
+
+cqlsh> create keyspace test_keyspace with replication={'class':'SimpleStrategy','replication_factor':1};
+cqlsh> use test_keyspace;
+cqlsh:test_keyspace> create table emp_tbl(emp_id int,name text,designation text,salary double,primary key(emp_id));
+
+
+9. Downlod kafka connector for cassandra from https://github.com/lensesio/stream-reactor/releases/download/2.1.2/kafka-connect-cassandra-2.1.2-2.5.0-all.tar.gz and extract it.
+
+10. From the extracted directory, copy kafka-connect-cassandra-version-all.jar to %KAFKA_HOME%\libs
+directory.
+
+11. create the file called sink-cassandra-connector.properties under %KAFKA_HOME%\config and add the following content to it.
+
+name=cassandra-sink-employee
+connector.class=com.datamountaineer.streamreactor.connect.cassandra.sink.CassandraSinkConnector
+tasks.max=1
+topics=cassandra-topic-employee
+connect.cassandra.kcql=INSERT INTO emp_tbl SELECT id as emp_id,name,designation,salary FROM cassandra-topic-employee
+connect.cassandra.port=9042
+connect.cassandra.key.space=test_keyspace
+connect.cassandra.contact.points=localhost
+connect.cassandra.username=cassandra
+connect.cassandra.password=cassandra
+
+12. start the connect process using the following command.
+
+connect-standalone c:\kafka_2.12-2.5.0\config\connect-standalone.properties c:\kafka_2.12-2.5.0\config\src-mysql-connector.properties c:\kafka_2.12-2.5.0\config\sink-cassandra-connector.properties
+
+
+                                          (converting to upper case)
+local file system------------------->topic-1---------->Streaming App----------->topic-2------>local file system
+c:\input\test.txt           etl-src-topic                                   etl-target-topic  c:\output\out.txt
+
+
+									
+	jdbc-source-connector						|------->dev-topic------>c:/out/dev.txt
+RDBMS-------------------------->myex-topic-employee------>StreamApp-----|------->acct-topic----->acct-topic-tbl
+								        |------->others-topic--->other_cas_tbl
+
+
+Developing user defined connector:
+
+The kafka connectors are developed using kafka connect api.
+
+To develop a source connector, the following classes should be extended.
+
+SourceConnector----------------source config properties
+SourceTask---------------------logic of importing data to kafka topic
+
+To develop a sink connector, the following classes should be extended.
+
+SinkConnector----------------sink config properties
+SinkTask---------------------logic of exporting data from kafka topic
+
+
+Spark:
+Big data technology which performs computation parallelly using the memory of multiple nodes in the cluster
+
+Hadoop:
+Provides a file system called HDFS-------------Hadoop Distributed File System.
+
+A file's content can be distributed across multiple nodes in the cluster.
+
+Hadoop also provides additional computation components like Map Reduce,Hive,Pig and etc.
+
+		Extract				Transform		Load
+Kafka Topic------------------------->Spark Streaming Application--------------------->HDFS
+
+
+Kafka streaming application----------a single jvm processes data across multiple partitions across 
+multiple brokers in the cluster.
+
+spark streaming application----------multiple jvms process the data coming from multiple partitions in the topic.
+
+
+
+
+Introduction to Spark:
+
+Spark is a general purpose engine used for large scale data processing.
+
+Core Spark deals with unstructured data. The fundamental unit of data in core spark is RDD.
+
+RDD---------Resilient Distributed Dataset
+Resilient-------if the data is lost it can be recreated
+Distributed-----distributed across multiple nodes in the cluster
+Dataset---------Collection.
+
+RDD is collection of data distributed across multiple nodes in the spark cluster.
+
+
+
+Spark runs with a cluster of nodes.
+
+When it is running in a single machine, the worker nodes in the cluster can be specified by using the string "local[*]"
+
+local----------running in local machine
+*--------------no of core cpus in the machine.
+
+
+		Extract			Transform	Load
+Kafka Topic----------------------->Spark Streaming App-------------------->HDFS
+test-sparkstream-topic		    (word count app)
+
+
+map reduce: 
+
+Popular algorithm for solving many big data related problems.
+
+Has 2 phases:
+
+map phase: contains sequence of one or more transformations.
+reduce phase: works on the output of map phase and provides a summary of the data obtained from map phase.
+
+
+
+
+
+
+
+
+
+
+
+
