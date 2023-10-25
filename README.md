@@ -1,1 +1,2 @@
 # mytrainings
+Apache Kafka Trainings 
